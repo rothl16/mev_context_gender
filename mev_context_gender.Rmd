@@ -1,0 +1,52 @@
+---
+title: "mev_context_gender_analysis"
+author: "Leopold Roth"
+date: "2024-09-24"
+output: html_document
+---
+
+# packages
+```{r}
+library(readr)
+library(dplyr)
+```
+
+# data
+```{r}
+df_care <- read_csv("mev_gender_care.csv")
+df_work <- read_csv("mev_gender_work.csv")
+```
+
+# delete 2 columns in df_work (delete!)
+delete this later
+```{r}
+df_work <- df_work %>%
+  select(-c(C_Coop_loEf_m, C_Coop_hiEf_m))
+```
+
+# rename columns to match (correct spelling)
+```{r}
+# remove prefixes
+colnames(df_care) <- sub("^C_", "", colnames(df_care))
+colnames(df_work) <- sub("^W_", "", colnames(df_work))
+
+# adjust names
+df_care <- df_care %>%
+  rename(Coop_LoEf_m = Coop_loEf_m,
+         Coop_HiEf_m = Coop_hiEf_m,
+         Coop_LoEf_f = Coop__LoEf_f,
+         Coop_HiEf_f = Coop__HiEf_f)
+```
+
+# combine data wih identifier
+```{r}
+# identifier for studies
+care <- rep(0, nrow(df_care))
+work <- rep(1, nrow(df_work))
+
+care_0_work_1 <- c(care, work)
+
+# merge datasets
+df <- rbind(df_care, df_work)
+```
+
