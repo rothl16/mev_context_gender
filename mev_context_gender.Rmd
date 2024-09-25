@@ -50,3 +50,9 @@ care_0_work_1 <- c(care, work)
 df <- rbind(df_care, df_work)
 ```
 
+- code between factor (female/male)
+
+
+
+
+
