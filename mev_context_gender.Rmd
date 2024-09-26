@@ -11,6 +11,12 @@ library(readr)
 library(dplyr)
 ```
 
+# source functions from script
+this 'runs' the script functions_run_first.R and saves work to do it yourself/otherwise can't knit (create markdown)
+```{r, include=FALSE}
+source("functions_run_first.R", local = knitr::knit_global())
+```
+
 # data
 ```{r}
 df_care <- read_csv("mev_gender_care.csv")
@@ -48,10 +54,60 @@ care_0_work_1 <- c(care, work)
 
 # merge datasets
 df <- rbind(df_care, df_work)
+
+# add identifier
+df$care_0_work_1 <- care_0_work_1
 ```
 
-- code between factor (female/male)
+# compute gender identifier
+```{r}
+df$male_0_female_1 <- ifelse(is.na(df$Time_Vign_male_First_Click), 1, 0)
+```
 
+# clean data
+- no country filter: done through Prolific
+```{r}
+# merge attention checks in one variable
+df <- df %>%
+  mutate(AC1 = coalesce(AC_f_1, AC_m_1),
+         AC2 = coalesce(AC_f_2, AC_m_2))
+
+# remove attention checks by gender
+df <- df %>%
+  select(-c(AC_f_1, AC_m_1, AC_f_2, AC_m_2))
+
+# use data cleaning function (currently deactivated, because otherwise only 12 cases left)
+# df <- clean_data(df)
+
+# transform all column names to small letters
+colnames(df) <- tolower(colnames(df))
+
+colnames(df) <- gsub("(_m_|_f_|_m$|_f$|.0$)", "", colnames(df))
+
+duplicated_columns <- colnames(df)[duplicated(colnames(df))]
+
+# Temporarily rename duplicated columns to prevent conflict
+colnames(df) <- make.unique(colnames(df))
+
+# Loop through each base name and merge columns
+for (col_name in unique(duplicated_columns)) {
+  # Find all matching columns (the ones that were originally duplicates)
+  matching_cols <- grep(paste0("^", col_name), colnames(df), value = TRUE)
+  
+  # Check if there are at least two columns to merge
+  if (length(matching_cols) > 1) {
+    # Merge the columns using coalesce
+    df[[col_name]] <- coalesce(!!!df[matching_cols])
+    
+    # Optionally remove the temporary duplicates after merging, except the first one
+    df <- df %>% select(-one_of(matching_cols[-1]))
+  }
+}
+
+print(colnames(df))
+```
+
+- next: correct some misspellings! Apart this works:)
 
 
 
