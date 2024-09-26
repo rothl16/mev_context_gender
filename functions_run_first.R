@@ -42,7 +42,7 @@ preparation <- function(df){
            pay_deservingness_lo = Sal_LoEf_1, #pay deservingness
            pay_deservingness_he = Sal_HiEf_1,
            cooperation_lo = Coop_LoEf, #cooperation partner satisfaction
-           Cooperation_he = Coop_HiEf) 
+           cooperation_he = Coop_HiEf) 
   return(prepared_df)
 }
 
@@ -55,4 +55,92 @@ difference_scores <- function(df){
     mutate(value_comm_diff = (value_comm_he-value_comm_lo)) #effort moralization effect: value commitment
   
   return(df_difference)
+}
+
+extract_and_combine_rows <- function(df_list, row_index) {
+  # Extract the specific row from each dataframe, or a row of NA if the index is out of bounds
+  rows <- lapply(df_list, function(df) {
+    if(nrow(df) >= row_index) {
+      return(df[row_index, , drop = FALSE])
+    } else {
+      # Return a row of NAs with the same number of columns as the first dataframe in the list
+      return(data.frame(matrix(NA, ncol = ncol(df_list[[1]]), nrow = 1, dimnames = list(NULL, names(df_list[[1]])))))
+    }
+  })
+  # Combine the rows from all dataframes
+  do.call(rbind, rows)
+}
+
+plot_violin_with_means <- function(data, columns_to_pivot, y_label, plot_title = "") {
+  # Pivot the data
+  df_long <- pivot_longer(data, cols = columns_to_pivot, names_to = "group", values_to = "value")
+  
+  # Recode group based on '_he' and '_lo'
+  df_long <- df_long %>%
+    mutate(group = case_when(
+      str_detect(group, "_he$") ~ "high",
+      str_detect(group, "_lo$") ~ "low",
+      TRUE ~ group  # Keeps the original value if none of the conditions match
+    ))
+  
+  # Calculate the mean values for each group and country
+  means_df <- df_long %>%
+    group_by(male_0_female_1, group) %>%
+    summarise(mean_value = mean(value), .groups = "drop")
+  
+  y_min <- 1
+  y_max <- 7
+  
+  # Plot
+  p <- ggplot(df_long, aes(x = group, y = value, fill = group)) +
+    geom_violin() +
+    geom_point(data = means_df, aes(x = group, y = mean_value, group = group), color = "black", size = 14, shape = 95) +
+    facet_grid(~male_0_female_1) +
+    theme_classic() +
+    labs(y = y_label, x = "", title = plot_title) +
+    ylim(y_min,y_max) +
+    theme(legend.position = "none",
+          text = element_text(size = 14, color = "black"), # Base text size for the plot, increases all text size
+          axis.title = element_text(size = 16, color = "black"), # Axis titles
+          axis.text = element_text(size = 14, color = "black"), # Axis text (ticks)
+          plot.title = element_text(size = 20, color = "black", face = "bold"), # Plot title
+          strip.text = element_text(size = 14, color = "black"))
+  return(p)
+}
+
+plot_violin_with_means_negative <- function(data, columns_to_pivot, y_label, plot_title = "") {
+  # Pivot the data
+  df_long <- pivot_longer(data, cols = columns_to_pivot, names_to = "group", values_to = "value")
+  
+  # Recode group based on '_he' and '_lo'
+  df_long <- df_long %>%
+    mutate(group = case_when(
+      str_detect(group, "_he$") ~ "high",
+      str_detect(group, "_lo$") ~ "low",
+      TRUE ~ group  # Keeps the original value if none of the conditions match
+    ))
+  
+  # Calculate the mean values for each group and country
+  means_df <- df_long %>%
+    group_by(male_0_female_1, group) %>%
+    summarise(mean_value = mean(value), .groups = "drop")
+  
+  y_min <- -4
+  y_max <- 4
+  
+  # Plot
+  p <- ggplot(df_long, aes(x = group, y = value, fill = group)) +
+    geom_violin() +
+    geom_point(data = means_df, aes(x = group, y = mean_value, group = group), color = "black", size = 14, shape = 95) +
+    facet_grid(~male_0_female_1) +
+    theme_classic() +
+    labs(y = y_label, x = "", title = plot_title) +
+    ylim(y_min,y_max) +
+    theme(legend.position = "none",
+          text = element_text(size = 14, color = "black"), # Base text size for the plot, increases all text size
+          axis.title = element_text(size = 16, color = "black"), # Axis titles
+          axis.text = element_text(size = 14, color = "black"), # Axis text (ticks)
+          plot.title = element_text(size = 20, color = "black", face = "bold"), # Plot title
+          strip.text = element_text(size = 14, color = "black"))
+  return(p)
 }

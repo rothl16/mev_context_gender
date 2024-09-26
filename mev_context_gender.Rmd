@@ -6,9 +6,29 @@ output: html_document
 ---
 
 # packages
-```{r}
-library(readr)
+```{r message=FALSE, warning=FALSE}
+install.packages("MatrixModels", type = "source")
 library(dplyr)
+library(readr)
+library(ggplot2)
+library(psych)
+library(lavaan)
+library(easystats)
+library(semPlot)
+library(reshape2)
+library(misty)
+library(foreign)
+library(varhandle)
+library(car)
+library(eRm)
+library(tidyr)
+library(haven)
+library(BayesFactor)
+library(stringr)
+library(patchwork)
+library(afex)
+library(emmeans)
+
 ```
 
 # source functions from script
@@ -66,6 +86,8 @@ df$male_0_female_1 <- ifelse(is.na(df$Time_Vign_male_First_Click), 1, 0)
 
 # clean data
 - no country filter: done through Prolific
+- every variable was existet for female and male and had to be unified and connected
+- difference score function: filters out participants who thought that the low effort condition was more/equally effortful than the high effort condition
 ```{r}
 # merge attention checks in one variable
 df <- df %>%
@@ -79,10 +101,9 @@ df <- df %>%
 # use data cleaning function (currently deactivated, because otherwise only 12 cases left)
 # df <- clean_data(df)
 
-# transform all column names to small letters
-colnames(df) <- tolower(colnames(df))
-
-colnames(df) <- gsub("(_m_|_f_|_m$|_f$|.0$)", "", colnames(df))
+# adjust column names
+colnames(df) <- gsub("\\.0$", "", colnames(df))
+colnames(df) <- gsub("(_m|_f|_m$|_f$)", "", colnames(df))
 
 duplicated_columns <- colnames(df)[duplicated(colnames(df))]
 
@@ -92,7 +113,7 @@ colnames(df) <- make.unique(colnames(df))
 # Loop through each base name and merge columns
 for (col_name in unique(duplicated_columns)) {
   # Find all matching columns (the ones that were originally duplicates)
-  matching_cols <- grep(paste0("^", col_name), colnames(df), value = TRUE)
+  matching_cols <- grep(paste0("^", col_name, "(\\.\\d+)?$"), colnames(df), value = TRUE)
   
   # Check if there are at least two columns to merge
   if (length(matching_cols) > 1) {
@@ -104,11 +125,616 @@ for (col_name in unique(duplicated_columns)) {
   }
 }
 
-print(colnames(df))
+# use preparation function
+df <- preparation(df)
+
+# use difference score function
+df <- difference_scores(df)
 ```
 
-- next: correct some misspellings! Apart this works:)
+# reliabilities
+## core goodness
+### low effort
+```{r}
+#alpha
+psych::alpha(df %>% select(c(Ch_LoEf_3, Ch_LoEf_9, Ch_LoEf_11, Ch_LoEf_10, Ch_LoEf_13, Ch_LoEf_14
+)))[[1]]
+#omega
+psych::omega(df %>% select(c(Ch_LoEf_3, Ch_LoEf_9, Ch_LoEf_11, Ch_LoEf_10, Ch_LoEf_13, Ch_LoEf_14
+)))[[1]]
+```
+
+### high effort
+```{r}
+#alpha
+psych::alpha(df %>% select(c(Ch_HiEf_3, Ch_HiEf_9, Ch_HiEf_11, Ch_HiEf_10, Ch_HiEf_13, Ch_HiEf_14
+)))[[1]]
+#omega
+psych::omega(df %>% select(c(Ch_HiEf_3, Ch_HiEf_9, Ch_HiEf_11, Ch_HiEf_10, Ch_HiEf_13, Ch_HiEf_14
+)))[[1]]
+```
+
+## value commitment
+### low effort
+```{r}
+#alpha
+psych::alpha(df %>% select(c(Ch_LoEf_1, Ch_LoEf_5, Ch_LoEf_15, Ch_LoEf_8, Ch_LoEf_4, Ch_LoEf_12, Ch_LoEf_7)))[[1]]
+#omega
+psych::omega(df %>% select(c(Ch_LoEf_1, Ch_LoEf_5, Ch_LoEf_15, Ch_LoEf_8, Ch_LoEf_4, Ch_LoEf_12, Ch_LoEf_7)))[[1]]
+```
+
+### high effort
+```{r}
+#alpha
+psych::alpha(df %>% select(c(Ch_HiEf_1, Ch_HiEf_5, Ch_HiEf_15, Ch_HiEf_8, Ch_HiEf_4, Ch_HiEf_12, Ch_HiEf_7)))[[1]]
+#omega
+psych::omega(df %>% select(c(Ch_HiEf_1, Ch_HiEf_5, Ch_HiEf_15, Ch_HiEf_8, Ch_HiEf_4, Ch_HiEf_12, Ch_HiEf_7)))[[1]]
+```
+
+# prepare analysis
+## keep needed columns
+
+```{r}
+# correction from name unification above
+df <- df %>% rename(male_0_female_1 = male_0emale_1)
+
+# keep needed columns for analysis
+df <- df %>% 
+    select(c(
+      ResponseId, ends_with("_lo"), ends_with("_he"),starts_with("FW"), ends_with("_diff"),
+      effort_check,Age, Gen, care_0_work_1, male_0_female_1
+    ))
+```
+
+## demographic analysis
+```{r}
+# describe age for complete sample and by context
+# describe age by context
+age_summary_by_group <- df %>%
+  group_by(care_0_work_1) %>%
+  summarise(
+    count = n(),
+    mean_age = mean(Age, na.rm = TRUE),
+    median_age = median(Age, na.rm = TRUE),
+    min_age = min(Age, na.rm = TRUE),
+    max_age = max(Age, na.rm = TRUE),
+    sd_age = sd(Age, na.rm = TRUE)
+  )
+
+# Summarize Age across the whole sample
+age_summary_total <- df %>%
+  summarise(
+    Group = "Total",  # Label the overall summary as 'Total'
+    count = n(),
+    mean_age = mean(Age, na.rm = TRUE),
+    median_age = median(Age, na.rm = TRUE),
+    min_age = min(Age, na.rm = TRUE),
+    max_age = max(Age, na.rm = TRUE),
+    sd_age = sd(Age, na.rm = TRUE)
+  )
+
+# Combine the group summary and total summary into one data frame
+age_summary_combined <- bind_rows(age_summary_by_group, age_summary_total)
+
+# gender by context
+# Create a cross-tabulation
+cross_tab <- table(df$care_0_work_1, df$Gen)
+
+# Convert the cross-tabulation to percentages
+percentage_cross_tab <- round(prop.table(cross_tab) * 100,2)
+
+# View the cross-tabulation with percentages
+print(percentage_cross_tab)
+
+#gender complete sample
+# Create a cross-tabulation
+cross_tab <- table(df$Gen)
+
+# Convert the cross-tabulation to percentages
+percentage_cross_tab <- round(prop.table(cross_tab) * 100,2)
+
+# View the cross-tabulation with percentages
+print(percentage_cross_tab)
+```
+
+## split data again by context for analysis
+```{r}
+df_care <- subset(df, care_0_work_1 == 0)
+df_work <- subset(df, care_0_work_1 == 1)
+```
+
+## descriptive: means
+get all descriptives of everything and filter for what is needed
+```{r}
+means_all <- rownames_as_column(psych::describe(df))
+means_care <- rownames_as_column(psych::describe(df_care))
+means_work <- rownames_as_column(psych::describe(df_work))
+```
+
+## shortened descriptives for report
+```{r}
+# work context
+short_work <- means_work %>%
+  select(c(rowname, mean, sd)) %>%
+  filter(grepl("^(core_|value_|warmth_|competene_|pay_|cooperation_)", rowname) & 
+         !grepl("_diff$", rowname)) %>%
+  mutate(
+    sort_key = case_when(
+      grepl("^core_", rowname) ~ 1,
+      grepl("^value_", rowname) ~ 2,
+      grepl("^warmth_", rowname) ~ 3,
+      grepl("^competene_", rowname) ~ 4,
+      grepl("^pay_", rowname) ~ 5,
+      grepl("^cooperation_", rowname) ~ 6
+    )
+  ) %>%
+  arrange(sort_key) %>%
+  select(-sort_key)  # Remove the sorting key column
+
+# care context
+short_care <- means_care %>%
+  select(c(rowname, mean, sd)) %>%
+  filter(grepl("^(core_|value_|warmth_|competene_|pay_|cooperation_)", rowname) & 
+         !grepl("_diff$", rowname)) %>%
+  mutate(
+    sort_key = case_when(
+      grepl("^core_", rowname) ~ 1,
+      grepl("^value_", rowname) ~ 2,
+      grepl("^warmth_", rowname) ~ 3,
+      grepl("^competene_", rowname) ~ 4,
+      grepl("^pay_", rowname) ~ 5,
+      grepl("^cooperation_", rowname) ~ 6
+    )
+  ) %>%
+  arrange(sort_key) %>%
+  select(-sort_key)  # Remove the sorting key column
+```
+
+# main analysis: Aim 1
+## comparisons: core goodness
+```{r}
+#care
+cg_care <- as.data.frame(report::report(t.test(df_care$core_good_lo, df_care$core_good_he, paired = TRUE)))
+cg_care <- cg_care %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+cg_care$BF <- as.data.frame(ttestBF(x = df_care$core_good_lo, y = df_care$core_good_he, paired = TRUE))[[1]]
+
+#work
+cg_work <- as.data.frame(report::report(t.test(df_work$core_good_lo, df_work$core_good_he, paired = TRUE)))
+cg_work <- cg_work %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+cg_work$BF <- as.data.frame(ttestBF(x = df_work$core_good_lo, y = df_work$core_good_he, paired = TRUE))[[1]]
+
+#combine results
+cg_results <- bind_rows(cg_care, cg_work) #using more flexible dplyr function; rbind had trouble with row.names
+cg_results$target <- rep("core_goodness",nrow(cg_results)) #add column to mention DV
+rm(list=c("cg_care","cg_work")) #removes non-needed dfs
+```
+
+## comparisons: value commitment
+```{r}
+#care
+vc_care <- as.data.frame(report::report(t.test(df_care$value_comm_lo, df_care$value_comm_he, paired = TRUE)))
+vc_care <- vc_care %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+vc_care$BF <- as.data.frame(ttestBF(x = df_care$value_comm_lo, y = df_care$value_comm_he, paired = TRUE))[[1]]
+
+#work
+vc_work <- as.data.frame(report::report(t.test(df_work$value_comm_lo, df_work$value_comm_he, paired = TRUE)))
+vc_work <- vc_work %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+vc_work$BF <- as.data.frame(ttestBF(x = df_work$value_comm_lo, y = df_work$value_comm_he, paired = TRUE))[[1]]
+
+#combine results
+vc_results <- bind_rows(vc_care, vc_work) #using more flexible dplyr function; rbind had trouble with row.names
+vc_results$target <- rep("value_commness",nrow(vc_results)) #add column to mention DV
+rm(list=c("vc_care","vc_work")) #removes non-needed dfs
+```
+
+## comparisons: warmth
+```{r}
+#care
+wa_care <- as.data.frame(report::report(t.test(df_care$warmth_lo, df_care$warmth_he, paired = TRUE)))
+wa_care <- wa_care %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+wa_care$BF <- as.data.frame(ttestBF(x = df_care$warmth_lo, y = df_care$warmth_he, paired = TRUE))[[1]]
+
+#work
+wa_work <- as.data.frame(report::report(t.test(df_work$warmth_lo, df_work$warmth_he, paired = TRUE)))
+wa_work <- wa_work %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+wa_work$BF <- as.data.frame(ttestBF(x = df_work$warmth_lo, y = df_work$warmth_he, paired = TRUE))[[1]]
+
+#combine results
+wa_results <- bind_rows(wa_care, wa_work) #using more flexible dplyr function; rbind had trouble with row.names
+wa_results$target <- rep("warmthness",nrow(wa_results)) #add column to mention DV
+rm(list=c("wa_care","wa_work")) #removes non-needed dfs
+```
+
+## comparisons: competence
+```{r}
+#care
+co_care <- as.data.frame(report::report(t.test(df_care$competence_lo, df_care$competence_he, paired = TRUE)))
+co_care <- co_care %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+co_care$BF <- as.data.frame(ttestBF(x = df_care$competence_lo, y = df_care$competence_he, paired = TRUE))[[1]]
+
+#work
+co_work <- as.data.frame(report::report(t.test(df_work$competence_lo, df_work$competence_he, paired = TRUE)))
+co_work <- co_work %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+co_work$BF <- as.data.frame(ttestBF(x = df_work$competence_lo, y = df_work$competence_he, paired = TRUE))[[1]]
+
+#combine results
+co_results <- bind_rows(co_care, co_work) #using more flexible dplyr function; rbind had trouble with row.names
+co_results$target <- rep("competence",nrow(co_results)) #add column to mention DV
+rm(list=c("co_care","co_work")) #removes non-needed dfs
+```
+
+## comparisons: pay deservingness
+```{r}
+#care
+pd_care <- as.data.frame(report::report(t.test(df_care$pay_deservingness_lo, df_care$pay_deservingness_he, paired = TRUE)))
+pd_care <- pd_care %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+pd_care$BF <- as.data.frame(ttestBF(x = df_care$pay_deservingness_lo, y = df_care$pay_deservingness_he, paired = TRUE))[[1]]
+
+#work
+pd_work <- as.data.frame(report::report(t.test(df_work$pay_deservingness_lo, df_work$pay_deservingness_he, paired = TRUE)))
+pd_work <- pd_work %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+pd_work$BF <- as.data.frame(ttestBF(x = df_work$pay_deservingness_lo, y = df_work$pay_deservingness_he, paired = TRUE))[[1]]
+
+#combine results
+pd_results <- bind_rows(pd_care, pd_work) #using more flexible dplyr function; rbind had trouble with row.names
+pd_results$target <- rep("pay_deservingness",nrow(pd_results)) #add column to mention DV
+rm(list=c("pd_care","pd_work")) #removes non-needed dfs
+```
+
+## comparisons: cooperation
+```{r}
+#care
+cp_care <- as.data.frame(report::report(t.test(df_care$cooperation_lo, df_care$cooperation_he, paired = TRUE)))
+cp_care <- cp_care %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+cp_care$BF <- as.data.frame(ttestBF(x = df_care$cooperation_lo, y = df_care$cooperation_he, paired = TRUE))[[1]]
+
+#work
+cp_work <- as.data.frame(report::report(t.test(df_work$cooperation_lo, df_work$cooperation_he, paired = TRUE)))
+cp_work <- cp_work %>% select(p, Cohens_d, Cohens_d_CI_low, Cohens_d_CI_high)
+cp_work$BF <- as.data.frame(ttestBF(x = df_work$cooperation_lo, y = df_work$cooperation_he, paired = TRUE))[[1]]
+
+#combine results
+cp_results <- bind_rows(cp_care, cp_work) #using more flexible dplyr function; rbind had trouble with row.names
+cp_results$target <- rep("cooperation",nrow(cp_results)) #add column to mention DV
+rm(list=c("cp_care","cp_work")) #removes non-needed dfs
+```
+
+### combine t-test results
+```{r}
+#combine results
+comp_results <- bind_rows(cg_results,
+                      vc_results,
+                      wa_results,
+                      co_results,
+                      pd_results,
+                      cp_results)
+
+#add names list
+samples <- c("care","work")
+comp_results$context <- rep(samples,6)
+
+#log-transform BFs
+comp_results$BF <- log(comp_results$BF)
+
+comp_results <- comp_results %>% #rounds all numeric variables to 3 decimals
+  mutate_if(is.numeric, round, digits = 3)
+
+#this makes the transfer to word easier
+##open excel, find/replace comma with point, copy, paste, correct format
+#writexl::write_xlsx(comp_results, "t-results.xlsx")
+
+#remove non-needed objects
+rm(list = c("cg_results","vc_results","pd_results","wa_results","co_results","samples"))
+```
+
+# main analysis: Aim 2 (gender pay gap)
+```{r}
+# work context
+## low effort
+report::report(t.test(pay_deservingness_lo ~ male_0_female_1, data = df_work))
+ttestBF(x = df_work$pay_deservingness_lo, y = df_work$male_0_female_1)
+## high effort
+report::report(t.test(pay_deservingness_he ~ male_0_female_1, data = df_work))
+ttestBF(x = df_work$pay_deservingness_he, y = df_work$male_0_female_1)
+
+# care context
+## low effort
+report::report(t.test(pay_deservingness_lo ~ male_0_female_1, data = df_care))
+ttestBF(x = df_care$pay_deservingness_lo, y = df_care$male_0_female_1)
+## high effort
+report::report(t.test(pay_deservingness_he ~ male_0_female_1, data = df_care))
+ttestBF(x = df_care$pay_deservingness_he, y = df_care$male_0_female_1)
+```
+
+# main analysis: Aim 2 ANOVA (work)
+```{r}
+# work/core goodness
+## restructure data
+df_long <- df_work %>%
+  pivot_longer(cols = c(core_good_he, core_good_lo),
+               names_to = "core_good_condition",
+               values_to = "score")
+
+## perform anova
+anova_results <- aov_ez(
+  id = "ResponseId",  # Assuming there's a subject ID column
+  dv = "score",  # Dependent variable
+  between = "male_0_female_1",  # Between-subjects factor
+  within = "core_good_condition",  # Within-subjects factor
+  data = df_long
+)
+
+## print results
+print(anova_results)
+
+## post-hoc test
+post_hoc <- emmeans(anova_results, pairwise ~ core_good_condition | male_0_female_1, p.adjust = "tukey")
+print(post_hoc)
+
+## Bayesian posthoc BF (commented out, takes a while)
+#df_long$male_0_female_1 <- as.factor(df_long$male_0_female_1)
+#df_long$core_good_condition <- as.factor(df_long$core_good_condition)
+#num_unique_ids <- length(unique(df_long$ResponseId))  # Assuming ResponseId is the column with unique IDs
+#df_long$ID <- rep(seq(1, num_unique_ids), each = 2)
+#df_long$ID <- as.factor(df_long$ID)
+# Perform the Bayesian mixed ANOVA again
+#bf_anova <- anovaBF(
+#  score ~ core_good_condition * male_0_female_1 + ID,
+#  data = df_long,
+#  whichRandom = "ID"
+#)
+
+#summary(bf_anova)
 
 
 
+df_plot <- df_work #define df for plotting
+
+df_plot <- df_plot %>%
+  mutate(male_0_female_1 = as.character(male_0_female_1)) %>%  # Convert to character
+  mutate(male_0_female_1 = case_when(
+    male_0_female_1 == "0" ~ "male",
+    male_0_female_1 == "1" ~ "female",
+    TRUE ~ male_0_female_1  # This handles any unexpected values
+  ))
+
+#apply function for restructuring and plotting data
+plot_cg_work <- plot_violin_with_means(df_plot, c("core_good_lo", "core_good_he"), "core goodness")
+
+print(plot_cg_work)
+
+# work/value commitment
+df_long <- df_work %>%
+  pivot_longer(cols = c(value_comm_he, value_comm_lo),
+               names_to = "value_comm_condition",
+               values_to = "score")
+
+# Perform the mixed ANOVA
+anova_results <- aov_ez(
+  id = "ResponseId",  # Assuming there's a subject ID column
+  dv = "score",  # Dependent variable
+  between = "male_0_female_1",  # Between-subjects factor
+  within = "value_comm_condition",  # Within-subjects factor
+  data = df_long
+)
+
+# Print the results
+print(anova_results)
+
+post_hoc <- emmeans(anova_results, pairwise ~ value_comm_condition | male_0_female_1, p.adjust = "tukey")
+print(post_hoc)
+
+## Bayesian posthoc BF (commented out, takes a while)
+#df_long$male_0_female_1 <- as.factor(df_long$male_0_female_1)
+#df_long$value_comm_condition <- as.factor(df_long$value_comm_condition)
+#num_unique_ids <- length(unique(df_long$ResponseId))  # Assuming ResponseId is the column with unique IDs
+#df_long$ID <- rep(seq(1, num_unique_ids), each = 2)
+#df_long$ID <- as.factor(df_long$ID)
+# Perform the Bayesian mixed ANOVA again
+#bf_anova <- anovaBF(
+#  score ~ value_comm_condition * male_0_female_1 + ID,
+#  data = df_long,
+#  whichRandom = "ID"
+#)
+
+#summary(bf_anova)
+
+df_plot <- df_work #define df for plotting
+
+df_plot <- df_plot %>%
+  mutate(male_0_female_1 = as.character(male_0_female_1)) %>%  # Convert to character
+  mutate(male_0_female_1 = case_when(
+    male_0_female_1 == "0" ~ "male",
+    male_0_female_1 == "1" ~ "female",
+    TRUE ~ male_0_female_1  # This handles any unexpected values
+  ))
+
+#apply function for restructuring and plotting data
+plot_vc_work <- plot_violin_with_means(df_plot, c("value_comm_lo", "value_comm_he"), "value commitment")
+
+print(plot_vc_work)
+
+combined_plot_work <- plot_cg_work / plot_vc_work #combine plots
+
+#ggsave("combined_plot_work.png", combined_plot_work, width = 12, height = 8, dpi = 300)
+```
+
+# main analysis: Aim 2 ANOVA (care)
+```{r}
+# care/core goodness
+## restructure data
+df_long <- df_care %>%
+  pivot_longer(cols = c(core_good_he, core_good_lo),
+               names_to = "core_good_condition",
+               values_to = "score")
+
+## perform anova
+anova_results <- aov_ez(
+  id = "ResponseId",  # Assuming there's a subject ID column
+  dv = "score",  # Dependent variable
+  between = "male_0_female_1",  # Between-subjects factor
+  within = "core_good_condition",  # Within-subjects factor
+  data = df_long
+)
+
+## print results
+print(anova_results)
+
+## post-hoc test
+post_hoc <- emmeans(anova_results, pairwise ~ core_good_condition | male_0_female_1, p.adjust = "tukey")
+print(post_hoc)
+
+## Bayesian posthoc BF (commented out, takes a while)
+#df_long$male_0_female_1 <- as.factor(df_long$male_0_female_1)
+#df_long$core_good_condition <- as.factor(df_long$core_good_condition)
+#num_unique_ids <- length(unique(df_long$ResponseId))  # Assuming ResponseId is the column with unique IDs
+#df_long$ID <- rep(seq(1, num_unique_ids), each = 2)
+#df_long$ID <- as.factor(df_long$ID)
+# Perform the Bayesian mixed ANOVA again
+#bf_anova <- anovaBF(
+#  score ~ core_good_condition * male_0_female_1 + ID,
+#  data = df_long,
+#  whichRandom = "ID"
+#)
+
+#summary(bf_anova)
+
+
+
+df_plot <- df_care #define df for plotting
+
+df_plot <- df_plot %>%
+  mutate(male_0_female_1 = as.character(male_0_female_1)) %>%  # Convert to character
+  mutate(male_0_female_1 = case_when(
+    male_0_female_1 == "0" ~ "male",
+    male_0_female_1 == "1" ~ "female",
+    TRUE ~ male_0_female_1  # This handles any unexpected values
+  ))
+
+#apply function for restructuring and plotting data
+plot_cg_care <- plot_violin_with_means(df_plot, c("core_good_lo", "core_good_he"), "core goodness")
+
+print(plot_cg_care)
+
+# care/value commitment
+df_long <- df_care %>%
+  pivot_longer(cols = c(value_comm_he, value_comm_lo),
+               names_to = "value_comm_condition",
+               values_to = "score")
+
+# Perform the mixed ANOVA
+anova_results <- aov_ez(
+  id = "ResponseId",  # Assuming there's a subject ID column
+  dv = "score",  # Dependent variable
+  between = "male_0_female_1",  # Between-subjects factor
+  within = "value_comm_condition",  # Within-subjects factor
+  data = df_long
+)
+
+# Print the results
+print(anova_results)
+
+post_hoc <- emmeans(anova_results, pairwise ~ value_comm_condition | male_0_female_1, p.adjust = "tukey")
+print(post_hoc)
+
+## Bayesian posthoc BF (commented out, takes a while)
+#df_long$male_0_female_1 <- as.factor(df_long$male_0_female_1)
+#df_long$value_comm_condition <- as.factor(df_long$value_comm_condition)
+#num_unique_ids <- length(unique(df_long$ResponseId))  # Assuming ResponseId is the column with unique IDs
+#df_long$ID <- rep(seq(1, num_unique_ids), each = 2)
+#df_long$ID <- as.factor(df_long$ID)
+# Perform the Bayesian mixed ANOVA again
+#bf_anova <- anovaBF(
+#  score ~ value_comm_condition * male_0_female_1 + ID,
+#  data = df_long,
+#  whichRandom = "ID"
+#)
+
+#summary(bf_anova)
+
+df_plot <- df_care #define df for plotting
+
+df_plot <- df_plot %>%
+  mutate(male_0_female_1 = as.character(male_0_female_1)) %>%  # Convert to character
+  mutate(male_0_female_1 = case_when(
+    male_0_female_1 == "0" ~ "male",
+    male_0_female_1 == "1" ~ "female",
+    TRUE ~ male_0_female_1  # This handles any unexpected values
+  ))
+
+#apply function for restructuring and plotting data
+plot_vc_care <- plot_violin_with_means(df_plot, c("value_comm_lo", "value_comm_he"), "value commitment")
+
+print(plot_vc_care)
+
+combined_plot_care <- plot_cg_care / plot_vc_care #combine plots
+
+#ggsave("combined_plot_care.png", combined_plot_care, width = 12, height = 8, dpi = 300)
+```
+
+# main analysis: Aim 3 (cooperation partner satisfaction)
+```{r}
+# work
+## restructure data
+df_long <- df_work %>%
+  pivot_longer(cols = c(cooperation_he, cooperation_lo),
+               names_to = "cooperation_condition",
+               values_to = "score")
+
+## perform anova
+anova_results <- aov_ez(
+  id = "ResponseId",  # Assuming there's a subject ID column
+  dv = "score",  # Dependent variable
+  between = "male_0_female_1",  # Between-subjects factor
+  within = "cooperation_condition",  # Within-subjects factor
+  data = df_long
+)
+
+## print results
+print(anova_results)
+
+## post-hoc test
+post_hoc <- emmeans(anova_results, pairwise ~ cooperation_condition | male_0_female_1, p.adjust = "tukey")
+print(post_hoc)
+
+## Bayesian posthoc BF (commented out, takes a while)
+#df_long$male_0_female_1 <- as.factor(df_long$male_0_female_1)
+#df_long$cooperation_condition <- as.factor(df_long$cooperation_condition)
+#num_unique_ids <- length(unique(df_long$ResponseId))  # Assuming ResponseId is the column with unique IDs
+#df_long$ID <- rep(seq(1, num_unique_ids), each = 2)
+#df_long$ID <- as.factor(df_long$ID)
+# Perform the Bayesian mixed ANOVA again
+#bf_anova <- anovaBF(
+#  score ~ cooperation_condition * male_0_female_1 + ID,
+#  data = df_long,
+#  whichRandom = "ID"
+#)
+
+#summary(bf_anova)
+
+
+
+df_plot <- df_work #define df for plotting
+
+df_plot <- df_plot %>%
+  mutate(male_0_female_1 = as.character(male_0_female_1)) %>%  # Convert to character
+  mutate(male_0_female_1 = case_when(
+    male_0_female_1 == "0" ~ "male",
+    male_0_female_1 == "1" ~ "female",
+    TRUE ~ male_0_female_1  # This handles any unexpected values
+  ))
+
+
+########################
+
+#items coded wrong!
+#use new data!
+
+########################
+#apply function for restructuring and plotting data
+plot_cp_work <- plot_violin_with_means_negative(df_plot, c("cooperation_lo", "cooperation_he"), "cooperation")
+
+print(plot_cp_work)
+# care
+```
 
