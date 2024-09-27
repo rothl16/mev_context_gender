@@ -7,7 +7,7 @@ output: html_document
 
 # packages
 ```{r message=FALSE, warning=FALSE}
-install.packages("MatrixModels", type = "source")
+library(MatrixModels)
 library(dplyr)
 library(readr)
 library(ggplot2)
@@ -46,8 +46,8 @@ df_work <- read_csv("mev_gender_work.csv")
 # delete 2 columns in df_work (delete!)
 delete this later
 ```{r}
-df_work <- df_work %>%
-  select(-c(C_Coop_loEf_m, C_Coop_hiEf_m))
+#df_work <- df_work %>%
+#  select(-c(C_Coop_loEf_m, C_Coop_hiEf_m))
 ```
 
 # rename columns to match (correct spelling)
@@ -84,10 +84,7 @@ df$care_0_work_1 <- care_0_work_1
 df$male_0_female_1 <- ifelse(is.na(df$Time_Vign_male_First_Click), 1, 0)
 ```
 
-# clean data
-- no country filter: done through Prolific
-- every variable was existet for female and male and had to be unified and connected
-- difference score function: filters out participants who thought that the low effort condition was more/equally effortful than the high effort condition
+# prepare for cleaning
 ```{r}
 # merge attention checks in one variable
 df <- df %>%
@@ -125,11 +122,6 @@ for (col_name in unique(duplicated_columns)) {
   }
 }
 
-# use preparation function
-df <- preparation(df)
-
-# use difference score function
-df <- difference_scores(df)
 ```
 
 # reliabilities
@@ -169,6 +161,18 @@ psych::omega(df %>% select(c(Ch_LoEf_1, Ch_LoEf_5, Ch_LoEf_15, Ch_LoEf_8, Ch_LoE
 psych::alpha(df %>% select(c(Ch_HiEf_1, Ch_HiEf_5, Ch_HiEf_15, Ch_HiEf_8, Ch_HiEf_4, Ch_HiEf_12, Ch_HiEf_7)))[[1]]
 #omega
 psych::omega(df %>% select(c(Ch_HiEf_1, Ch_HiEf_5, Ch_HiEf_15, Ch_HiEf_8, Ch_HiEf_4, Ch_HiEf_12, Ch_HiEf_7)))[[1]]
+```
+
+# clean data
+- no country filter: done through Prolific
+- every variable was existet for female and male and had to be unified and connected
+- difference score function: filters out participants who thought that the low effort condition was more/equally effortful than the high effort condition
+```{r}
+# use preparation function
+df <- preparation(df)
+
+# use difference score function
+df <- difference_scores(df)
 ```
 
 # prepare analysis
@@ -217,8 +221,19 @@ age_summary_total <- df %>%
 age_summary_combined <- bind_rows(age_summary_by_group, age_summary_total)
 
 # gender by context
+# work
 # Create a cross-tabulation
-cross_tab <- table(df$care_0_work_1, df$Gen)
+cross_tab <- table( df_work$Gen)
+
+# Convert the cross-tabulation to percentages
+percentage_cross_tab <- round(prop.table(cross_tab) * 100,2)
+
+# View the cross-tabulation with percentages
+print(percentage_cross_tab)
+
+# care
+# Create a cross-tabulation
+cross_tab <- table( df_care$Gen)
 
 # Convert the cross-tabulation to percentages
 percentage_cross_tab <- round(prop.table(cross_tab) * 100,2)
@@ -256,14 +271,14 @@ means_work <- rownames_as_column(psych::describe(df_work))
 # work context
 short_work <- means_work %>%
   select(c(rowname, mean, sd)) %>%
-  filter(grepl("^(core_|value_|warmth_|competene_|pay_|cooperation_)", rowname) & 
+  filter(grepl("^(core_|value_|warmth_|competence_|pay_|cooperation_)", rowname) & 
          !grepl("_diff$", rowname)) %>%
   mutate(
     sort_key = case_when(
       grepl("^core_", rowname) ~ 1,
       grepl("^value_", rowname) ~ 2,
       grepl("^warmth_", rowname) ~ 3,
-      grepl("^competene_", rowname) ~ 4,
+      grepl("^competence_", rowname) ~ 4,
       grepl("^pay_", rowname) ~ 5,
       grepl("^cooperation_", rowname) ~ 6
     )
@@ -271,23 +286,30 @@ short_work <- means_work %>%
   arrange(sort_key) %>%
   select(-sort_key)  # Remove the sorting key column
 
+short_work$mean <- round(short_work$mean,2)
+short_work$sd <- round(short_work$sd,2)
+
 # care context
 short_care <- means_care %>%
   select(c(rowname, mean, sd)) %>%
-  filter(grepl("^(core_|value_|warmth_|competene_|pay_|cooperation_)", rowname) & 
+  filter(grepl("^(core_|value_|warmth_|competence_|pay_|cooperation_)", rowname) & 
          !grepl("_diff$", rowname)) %>%
   mutate(
     sort_key = case_when(
       grepl("^core_", rowname) ~ 1,
       grepl("^value_", rowname) ~ 2,
       grepl("^warmth_", rowname) ~ 3,
-      grepl("^competene_", rowname) ~ 4,
+      grepl("^competence_", rowname) ~ 4,
       grepl("^pay_", rowname) ~ 5,
       grepl("^cooperation_", rowname) ~ 6
     )
   ) %>%
   arrange(sort_key) %>%
   select(-sort_key)  # Remove the sorting key column
+
+short_care$mean <- round(short_care$mean,2)
+short_care$sd <- round(short_care$sd,2)
+
 ```
 
 # main analysis: Aim 1
@@ -413,9 +435,6 @@ comp_results <- bind_rows(cg_results,
 samples <- c("care","work")
 comp_results$context <- rep(samples,6)
 
-#log-transform BFs
-comp_results$BF <- log(comp_results$BF)
-
 comp_results <- comp_results %>% #rounds all numeric variables to 3 decimals
   mutate_if(is.numeric, round, digits = 3)
 
@@ -424,7 +443,7 @@ comp_results <- comp_results %>% #rounds all numeric variables to 3 decimals
 #writexl::write_xlsx(comp_results, "t-results.xlsx")
 
 #remove non-needed objects
-rm(list = c("cg_results","vc_results","pd_results","wa_results","co_results","samples"))
+rm(list = c("cg_results","vc_results","pd_results","wa_results","co_results","cp_results","samples"))
 ```
 
 # main analysis: Aim 2 (gender pay gap)
@@ -724,17 +743,65 @@ df_plot <- df_plot %>%
     TRUE ~ male_0_female_1  # This handles any unexpected values
   ))
 
-
-########################
-
-#items coded wrong!
-#use new data!
-
-########################
 #apply function for restructuring and plotting data
-plot_cp_work <- plot_violin_with_means_negative(df_plot, c("cooperation_lo", "cooperation_he"), "cooperation")
+plot_cp_work <- plot_violin_with_means(df_plot, c("cooperation_lo", "cooperation_he"), "cooperation")
 
-print(plot_cp_work)
+
+
 # care
+## restructure data
+df_long <- df_care %>%
+  pivot_longer(cols = c(cooperation_he, cooperation_lo),
+               names_to = "cooperation_condition",
+               values_to = "score")
+
+## perform anova
+anova_results <- aov_ez(
+  id = "ResponseId",  # Assuming there's a subject ID column
+  dv = "score",  # Dependent variable
+  between = "male_0_female_1",  # Between-subjects factor
+  within = "cooperation_condition",  # Within-subjects factor
+  data = df_long
+)
+
+## print results
+print(anova_results)
+
+## post-hoc test
+post_hoc <- emmeans(anova_results, pairwise ~ cooperation_condition | male_0_female_1, p.adjust = "tukey")
+print(post_hoc)
+
+## Bayesian posthoc BF (commented out, takes a while)
+#df_long$male_0_female_1 <- as.factor(df_long$male_0_female_1)
+#df_long$cooperation_condition <- as.factor(df_long$cooperation_condition)
+#num_unique_ids <- length(unique(df_long$ResponseId))  # Assuming ResponseId is the column with unique IDs
+#df_long$ID <- rep(seq(1, num_unique_ids), each = 2)
+#df_long$ID <- as.factor(df_long$ID)
+# Perform the Bayesian mixed ANOVA again
+#bf_anova <- anovaBF(
+#  score ~ cooperation_condition * male_0_female_1 + ID,
+#  data = df_long,
+#  whichRandom = "ID"
+#)
+
+#summary(bf_anova)
+
+
+
+df_plot <- df_care #define df for plotting
+
+df_plot <- df_plot %>%
+  mutate(male_0_female_1 = as.character(male_0_female_1)) %>%  # Convert to character
+  mutate(male_0_female_1 = case_when(
+    male_0_female_1 == "0" ~ "male",
+    male_0_female_1 == "1" ~ "female",
+    TRUE ~ male_0_female_1  # This handles any unexpected values
+  ))
+
+#apply function for restructuring and plotting data
+plot_cp_care <- plot_violin_with_means(df_plot, c("cooperation_lo", "cooperation_he"), "cooperation")
+
+#ggsave("cooperation_plot_work.png", plot_cp_work, width = 8, height = 6, dpi = 300)
+#ggsave("cooperation_plot_care.png", plot_cp_care, width = 8, height = 6, dpi = 300)
 ```
 
