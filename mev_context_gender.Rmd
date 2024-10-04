@@ -575,7 +575,7 @@ print(plot_vc_work)
 
 combined_plot_work <- plot_cg_work / plot_vc_work #combine plots
 
-#ggsave("combined_plot_work.png", combined_plot_work, width = 12, height = 8, dpi = 300)
+ggsave("combined_plot_work.png", combined_plot_work, width = 12, height = 8, dpi = 300)
 ```
 
 # main analysis: Aim 2 ANOVA (care)
@@ -688,7 +688,7 @@ print(plot_vc_care)
 
 combined_plot_care <- plot_cg_care / plot_vc_care #combine plots
 
-#ggsave("combined_plot_care.png", combined_plot_care, width = 12, height = 8, dpi = 300)
+ggsave("combined_plot_care.png", combined_plot_care, width = 12, height = 8, dpi = 300)
 ```
 
 # main analysis: Aim 3 (cooperation partner satisfaction)
@@ -801,7 +801,7 @@ df_plot <- df_plot %>%
 #apply function for restructuring and plotting data
 plot_cp_care <- plot_violin_with_means(df_plot, c("cooperation_lo", "cooperation_he"), "cooperation")
 
-#ggsave("cooperation_plot_work.png", plot_cp_work, width = 8, height = 6, dpi = 300)
-#ggsave("cooperation_plot_care.png", plot_cp_care, width = 8, height = 6, dpi = 300)
+ggsave("cooperation_plot_work.png", plot_cp_work, width = 8, height = 4, dpi = 300)
+ggsave("cooperation_plot_care.png", plot_cp_care, width = 8, height = 4, dpi = 300)
 ```
 

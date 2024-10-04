@@ -99,12 +99,15 @@ plot_violin_with_means <- function(data, columns_to_pivot, y_label, plot_title =
     theme_classic() +
     labs(y = y_label, x = "", title = plot_title) +
     ylim(y_min,y_max) +
-    theme(legend.position = "none",
-          text = element_text(size = 14, color = "black"), # Base text size for the plot, increases all text size
-          axis.title = element_text(size = 16, color = "black"), # Axis titles
-          axis.text = element_text(size = 14, color = "black"), # Axis text (ticks)
-          plot.title = element_text(size = 20, color = "black", face = "bold"), # Plot title
-          strip.text = element_text(size = 14, color = "black"))
+    theme(
+      legend.position = "none",
+      text = element_text(family = "Times New Roman", size = 14, color = "black"), # Global text settings
+      axis.title = element_text(size = 16),  # Customize axis title size
+      axis.text = element_text(size = 14),   # Customize axis text size
+      plot.title = element_text(size = 20, face = "bold"),  # Customize plot title size and boldness
+      strip.text = element_text(size = 14)   # Customize facet label text size
+    ) +
+    scale_fill_manual(values = c("high" = "#abdc9d", "low" = "#f9e88f"))
   return(p)
 }
 
