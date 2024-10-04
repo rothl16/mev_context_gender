@@ -5,6 +5,16 @@ date: "2024-09-24"
 output: html_document
 ---
 
+```{r setup, include=FALSE}
+# Set global chunk options
+knitr::opts_chunk$set(
+  warning = FALSE,  # Suppress warnings
+  message = FALSE,  # Suppress messages
+  error = TRUE,     # Allow knitting to continue even with errors
+  echo = TRUE       # Show code in the output (you can change this to FALSE if you don't want the code to show)
+)
+```
+
 # packages
 ```{r message=FALSE, warning=FALSE}
 library(MatrixModels)
@@ -575,7 +585,7 @@ print(plot_vc_work)
 
 combined_plot_work <- plot_cg_work / plot_vc_work #combine plots
 
-ggsave("combined_plot_work.png", combined_plot_work, width = 12, height = 8, dpi = 300)
+ggsave("combined_plot_work.png", combined_plot_work, width = 8, height = 8, dpi = 300)
 ```
 
 # main analysis: Aim 2 ANOVA (care)
@@ -629,6 +639,8 @@ df_plot <- df_plot %>%
     male_0_female_1 == "1" ~ "female",
     TRUE ~ male_0_female_1  # This handles any unexpected values
   ))
+
+
 
 #apply function for restructuring and plotting data
 plot_cg_care <- plot_violin_with_means(df_plot, c("core_good_lo", "core_good_he"), "core goodness")
@@ -688,7 +700,7 @@ print(plot_vc_care)
 
 combined_plot_care <- plot_cg_care / plot_vc_care #combine plots
 
-ggsave("combined_plot_care.png", combined_plot_care, width = 12, height = 8, dpi = 300)
+ggsave("combined_plot_care.png", combined_plot_care, width = 8, height = 8, dpi = 300)
 ```
 
 # main analysis: Aim 3 (cooperation partner satisfaction)
